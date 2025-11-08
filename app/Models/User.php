@@ -18,15 +18,14 @@ class User extends Authenticatable
         'email',
         'cpf',
         'profile_id',
-        'password',
     ];
 
-    protected static function booted()
-    {
-        static::creating(function ($user) {
-            $user->password = Hash::make($user->password);
-        });
-    }
+    // protected static function booted()
+    // {
+    //     static::creating(function ($user) {
+    //         $user->password = Hash::make($user->password);
+    //     });
+    // }
 
     public function profile()
     {
@@ -62,38 +61,6 @@ class User extends Authenticatable
         } else if ($endDate) {
             $query->where('created_at', '<=', $endDate);
         }
-    }
-
-    public function updateWithRelations(array $data): self
-    {
-        $this->fill(collect($data)->only([
-            'name', 'email', 'cpf', 'profile_id', 'password'
-        ])->toArray())->save();
-
-        if (!empty($data['addresses'])) {
-            $this->syncAddresses($data['addresses']);
-        }
-
-        return $this;
-    }
-    public function syncAddresses(array $addresses): void
-    {
-        $addressIds = collect($addresses)->map(fn($addr) =>
-            Address::firstOrCreate(
-                [
-                    'zip_code' => $addr['zip_code'],
-                    'street'   => $addr['street'],
-                    'number'   => $addr['number'],
-                ],
-                [
-                    'neighborhood' => $addr['neighborhood'],
-                    'city'         => $addr['city'],
-                    'state'        => $addr['state'],
-                ]
-            )->id
-        );
-
-        $this->addresses()->sync($addressIds);
     }
 
         public function detachAddress(Address $address): void

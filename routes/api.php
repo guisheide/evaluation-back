@@ -9,5 +9,4 @@ Route::prefix('users')->group(function () {
     Route::put('/{user}', [UserController::class, 'update']);       // PUT /api/users/{user}
     Route::delete('/{user}', [UserController::class, 'destroy']);   // DELETE /api/users/{user}
     Route::delete('/{user}/addresses/{address}', [UserController::class, 'detachAddress']); // DELETE /api/users/{user}/addresses/{address}
-    
 });

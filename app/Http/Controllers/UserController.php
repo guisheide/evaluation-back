@@ -6,7 +6,6 @@ use App\Http\Resources\UserResource;
 use App\Models\Address;
 use App\Models\User;
 use Illuminate\Http\Request;
-use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Log;
 
 class UserController extends Controller
@@ -22,49 +21,57 @@ class UserController extends Controller
     return UserResource::collection($users);
     }
 
+
     public function store(Request $request)
     {
-        $data = $request->validated();
-
         try {
-            $user = User::create($data);
+            $data = $request->all();
 
-            if (!empty($data['addresses'])) {
-                $user->syncAddresses($data['addresses']);
+            // Criação do usuário
+            $user = User::create([
+                'name'       => $data['name'] ?? null,
+                'email'      => $data['email'] ?? null,
+                'cpf'        => $data['cpf'] ?? null,
+                'profile_id' => $data['profile_id'] ?? null,
+            ]);
+
+            // Se houver endereços, cria ou vincula
+            if (!empty($data['addresses']) && is_array($data['addresses'])) {
+                $addressIds = collect($data['addresses'])->map(function ($addr) {
+                    $address = Address::firstOrCreate(
+                        [
+                            'zip_code' => $addr['zip_code'],
+                            'street'   => $addr['street'],
+                            'number'   => $addr['number'],
+                        ],
+                        [
+                            'neighborhood' => $addr['neighborhood'] ?? '',
+                            'city'         => $addr['city'] ?? '',
+                            'state'        => $addr['state'] ?? '',
+                        ]
+                    );
+
+                    return $address->id;
+                });
+
+                $user->addresses()->syncWithoutDetaching($addressIds);
             }
 
-            $user->load(['addresses', 'profile']);
-            return (new UserResource($user))->response()->setStatusCode(201);
-
-            } catch (\Throwable $e) {
-                Log::error('Erro ao criar usuário: ' . $e->getMessage(), [
-                    'trace' => $e->getTraceAsString(),
-                ]);
-                return response()->json([
-                    'message' => 'Erro ao registrar usuário.',
-                    'error' => $e->getMessage(),
-                ], 500);
-        }
-    }
-
-    public function update(Request $request, User $user)
-    {
-        $data = $request->validated();
-
-        try {
-            $user->updateWithRelations($data);
+            // Carrega relações e retorna
             $user->load(['addresses', 'profile']);
 
-            return new UserResource($user);
+            return (new UserResource($user))
+                ->response()
+                ->setStatusCode(201);
 
         } catch (\Throwable $e) {
-            Log::error('Erro ao atualizar usuário: ' . $e->getMessage(), [
+            Log::error('Erro ao criar usuário: ' . $e->getMessage(), [
                 'trace' => $e->getTraceAsString(),
             ]);
 
             return response()->json([
-                'message' => 'Erro ao atualizar usuário.',
-                'error' => $e->getMessage(),
+                'message' => 'Erro ao registrar usuário.',
+                'error'   => $e->getMessage(),
             ], 500);
         }
     }
@@ -90,4 +97,50 @@ class UserController extends Controller
             return response()->json(['message' => 'Erro ao excluir endereço.'], 500);
         }
     }
+    public function update(Request $request, User $user)
+    {
+        $data = $request->validate([
+            'name' => 'sometimes|string|max:255',
+            'email' => 'sometimes|email|unique:users,email,' . $user->id,
+            'profile_id' => 'sometimes|exists:profiles,id',
+            'addresses' => 'sometimes|array',
+            'addresses.*.street' => 'required_with:addresses|string|max:255',
+            'addresses.*.zip_code' => 'required_with:addresses|string|max:20',
+        ]);
+
+        try {
+            $user->fill($data);
+            $user->save();
+
+            if (!empty($data['addresses'])) {
+                $addressIds = collect($data['addresses'])->map(function ($addr) {
+                    return Address::firstOrCreate([
+                        'zip_code' => $addr['zip_code'],
+                        'street' => $addr['street'],
+                    ])->id;
+                });
+                $user->addresses()->sync($addressIds);
+            }
+
+            if (!empty($data['profile_id'])) {
+                $user->profile()->associate($data['profile_id']);
+                $user->save();
+            }
+
+            $user->load(['addresses', 'profile']);
+
+            return new UserResource($user);
+
+        } catch (\Throwable $e) {
+            Log::error('Erro ao atualizar usuário: ' . $e->getMessage(), [
+                'trace' => $e->getTraceAsString(),
+            ]);
+
+            return response()->json([
+                'message' => 'Erro ao atualizar usuário.',
+                'error' => $e->getMessage(),
+            ], 500);
+        }
+    }
+
 }
