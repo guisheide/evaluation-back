@@ -2,10 +2,14 @@
 
 namespace App\Http\Controllers;
 
+use App\Http\Requests\StoreUserRequest;
 use App\Http\Resources\UserResource;
 use App\Models\Address;
 use App\Models\User;
 use Illuminate\Http\Request;
+use Illuminate\Support\Arr;
+use Illuminate\Support\Facades\DB;
+use Illuminate\Support\Facades\Hash;
 use Illuminate\Support\Facades\Log;
 
 class UserController extends Controller
@@ -21,43 +25,43 @@ class UserController extends Controller
     return UserResource::collection($users);
     }
 
-
-    public function store(Request $request)
+    public function show(User $user)
     {
         try {
-            $data = $request->all();
+            $user->load(['profile', 'addresses']);
 
-            // Criação do usuário
-            $user = User::create([
-                'name'       => $data['name'] ?? null,
-                'email'      => $data['email'] ?? null,
-                'cpf'        => $data['cpf'] ?? null,
-                'profile_id' => $data['profile_id'] ?? null,
-            ]);
+            return new UserResource($user);
+            
+        } catch (\Throwable $e) {
+            Log::error('Erro ao buscar usuário: ' . $e->getMessage());
+            return response()->json(['message' => 'Usuário não encontrado.'], 404);
+        }
+    }
 
-            // Se houver endereços, cria ou vincula
-            if (!empty($data['addresses']) && is_array($data['addresses'])) {
-                $addressIds = collect($data['addresses'])->map(function ($addr) {
-                    $address = Address::firstOrCreate(
-                        [
-                            'zip_code' => $addr['zip_code'],
-                            'street'   => $addr['street'],
-                            'number'   => $addr['number'],
-                        ],
-                        [
-                            'neighborhood' => $addr['neighborhood'] ?? '',
-                            'city'         => $addr['city'] ?? '',
-                            'state'        => $addr['state'] ?? '',
-                        ]
-                    );
 
-                    return $address->id;
-                });
+    public function store(StoreUserRequest $request)
+    {
+        $data = $request->validated();
+        try {
+            $user = DB::transaction(function () use ($data) {
+                $userData = Arr::except($data, ['addresses']);
+                $user = User::create($userData);
+                if (!empty($data['addresses'])) {
+                    
+                    $addressIds = collect($data['addresses'])->map(function ($addr) {
+                        return Address::firstOrCreate(
+                            [
+                                'zip_code' => $addr['zip_code'],
+                                'street'   => $addr['street'],
+                            ],
+                            []
+                        )->id;
+                    });
+                    $user->addresses()->sync($addressIds);
+                }
+                return $user;
+            });
 
-                $user->addresses()->syncWithoutDetaching($addressIds);
-            }
-
-            // Carrega relações e retorna
             $user->load(['addresses', 'profile']);
 
             return (new UserResource($user))
@@ -68,7 +72,6 @@ class UserController extends Controller
             Log::error('Erro ao criar usuário: ' . $e->getMessage(), [
                 'trace' => $e->getTraceAsString(),
             ]);
-
             return response()->json([
                 'message' => 'Erro ao registrar usuário.',
                 'error'   => $e->getMessage(),
@@ -102,7 +105,9 @@ class UserController extends Controller
         $data = $request->validate([
             'name' => 'sometimes|string|max:255',
             'email' => 'sometimes|email|unique:users,email,' . $user->id,
+            'cpf' => 'sometimes|string|max:14|unique:users,cpf,' . $user->id,
             'profile_id' => 'sometimes|exists:profiles,id',
+            
             'addresses' => 'sometimes|array',
             'addresses.*.street' => 'required_with:addresses|string|max:255',
             'addresses.*.zip_code' => 'required_with:addresses|string|max:20',
@@ -128,7 +133,6 @@ class UserController extends Controller
             }
 
             $user->load(['addresses', 'profile']);
-
             return new UserResource($user);
 
         } catch (\Throwable $e) {
@@ -143,4 +147,17 @@ class UserController extends Controller
         }
     }
 
+    public function addAddresses(User $user, array $data){
+        $addressIds = collect($data['addresses'])->map(function ($addr) {
+                    $address = Address::firstOrCreate(
+                        [
+                            'zip_code' => $addr['zip_code'],
+                            'street'   => $addr['street'],
+                        ],
+                    );
+                    return $address->id;
+                });
+
+                $user->addresses()->syncWithoutDetaching($addressIds);
+    }
 }

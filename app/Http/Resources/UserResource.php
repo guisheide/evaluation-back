@@ -20,10 +20,10 @@ class UserResource extends JsonResource
             'email' => $this->email,
             'cpf' => $this->cpf,
             'registered_at' => $this->created_at->format('d/m/Y H:i'),
-            
+            'profile_id' => $this->profile_id, 
             'profile' => new ProfileResource($this->whenLoaded('profile')),
             
-            'addresses' => AddressResource::collection($this->whenLoaded('addresses')),
-            ];
+            'addresses' => $this->whenLoaded('addresses'),            
+        ];
     }
 }

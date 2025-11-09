@@ -4,10 +4,9 @@ namespace App\Models;
 
 use Illuminate\Database\Eloquent\Builder;
 use Illuminate\Database\Eloquent\Factories\HasFactory;
-use Illuminate\Foundation\Auth\User as Authenticatable; // Usando o padrão
+use Illuminate\Foundation\Auth\User as Authenticatable;
 use Illuminate\Notifications\Notifiable;
 use Illuminate\Support\Facades\DB;
-use Illuminate\Support\Facades\Hash;
 
 class User extends Authenticatable
 {
@@ -19,13 +18,6 @@ class User extends Authenticatable
         'cpf',
         'profile_id',
     ];
-
-    // protected static function booted()
-    // {
-    //     static::creating(function ($user) {
-    //         $user->password = Hash::make($user->password);
-    //     });
-    // }
 
     public function profile()
     {
@@ -53,13 +45,17 @@ class User extends Authenticatable
 
         $startDate = $filters['start_date'] ?? null;
         $endDate = $filters['end_date'] ?? null;
+        $dateField = $filters['date_field'] ?? 'created_at';
 
+        if (!in_array($dateField, ['created_at', 'updated_at'])) {
+            $dateField = 'created_at';
+        }
         if ($startDate && $endDate) {
-            $query->whereBetween('created_at', [$startDate, $endDate]);
+            $query->whereBetween($dateField, [$startDate, $endDate . ' 23:59:59']);
         } else if ($startDate) {
-            $query->where('created_at', '>=', $startDate);
+            $query->where($dateField, '>=', $startDate);
         } else if ($endDate) {
-            $query->where('created_at', '<=', $endDate);
+            $query->where($dateField, '<=', $endDate . ' 23:59:59');
         }
     }
 
