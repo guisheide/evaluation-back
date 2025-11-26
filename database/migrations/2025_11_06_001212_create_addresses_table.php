@@ -14,12 +14,7 @@ return new class extends Migration
       Schema::create('addresses', function (Blueprint $table) {
         $table->id();
         $table->string('street');
-        $table->string('number');
-        $table->string('neighborhood');
-        $table->string('city');
-        $table->string('state', 2);
-        $table->string('zip_code');
-        $table->unique(['number', 'zip_code']);
+        $table->string('zip_code')->unique();
         
         $table->timestamps();
     });
